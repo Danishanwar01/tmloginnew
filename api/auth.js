@@ -1,61 +1,50 @@
-const crypto = require("crypto");
-const cors = require("cors");
+import crypto from "crypto";
+import jwt from "jsonwebtoken";
 
-const corsHandler = cors({
-  origin: "*",
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-});
+export default function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ message: "Method not allowed" });
+  }
 
-module.exports = (req, res) => {
-  // 🔥 CORS invoke
-  corsHandler(req, res, () => {
+  const user = req.body;
 
-    // Preflight request handle
-    if (req.method === "OPTIONS") {
-      return res.status(200).end();
-    }
+  // 1️⃣ Create secret from BOT TOKEN
+  const secret = crypto
+    .createHash("sha256")
+    .update(process.env.BOT_TOKEN)
+    .digest();
 
-    const authData = req.query;
-    const hash = authData.hash;
-    const BOT_TOKEN = process.env.BOT_TOKEN;
+  // 2️⃣ Create data-check string
+  const checkString = Object.keys(user)
+    .filter(key => key !== "hash")
+    .sort()
+    .map(key => `${key}=${user[key]}`)
+    .join("\n");
 
-    if (!hash || !BOT_TOKEN) {
-      return res.status(400).send("Missing data or token");
-    }
+  // 3️⃣ Generate HMAC
+  const hmac = crypto
+    .createHmac("sha256", secret)
+    .update(checkString)
+    .digest("hex");
 
-    // 1. Data sort + string
-    const dataCheckArr = [];
-    Object.keys(authData)
-      .filter(key => key !== "hash")
-      .sort()
-      .forEach(key => dataCheckArr.push(`${key}=${authData[key]}`));
+  // 4️⃣ Compare hash
+  if (hmac !== user.hash) {
+    return res.status(401).json({ message: "Invalid Telegram data" });
+  }
 
-    const dataCheckString = dataCheckArr.join("\n");
+  // 5️⃣ Create JWT
+  const token = jwt.sign(
+    {
+      telegramId: user.id,
+      username: user.username
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
 
-    // 2. Hash verify
-    const secretKey = crypto
-      .createHash("sha256")
-      .update(BOT_TOKEN)
-      .digest();
-
-    const hmac = crypto
-      .createHmac("sha256", secretKey)
-      .update(dataCheckString)
-      .digest("hex");
-
-    if (hmac === hash) {
-      res.send(`
-        <h1>Login Successful!</h1>
-        <p>Hello, ${authData.first_name} (ID: ${authData.id})</p>
-        <script>
-          setTimeout(() => {
-            window.location.href = "/";
-          }, 3000);
-        </script>
-      `);
-    } else {
-      res.status(403).send("<h1>Verification Failed!</h1><p>Data is tampered.</p>");
-    }
+  res.status(200).json({
+    message: "Telegram login successful",
+    token,
+    user
   });
-};
+}
