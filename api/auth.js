@@ -1,62 +1,61 @@
-import crypto from "crypto";
-import jwt from "jsonwebtoken";
+const crypto = require("crypto");
+const cors = require("cors");
 
-export default function handler(req, res) {
+const corsHandler = cors({
+  origin: "*",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+});
 
-  // 🔓 CORS (safe, same-origin friendly)
-  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+module.exports = (req, res) => {
+  // 🔥 CORS invoke
+  corsHandler(req, res, () => {
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
+    // Preflight request handle
+    if (req.method === "OPTIONS") {
+      return res.status(200).end();
+    }
 
-  if (req.method !== "POST") {
-    return res.status(405).json({ message: "Method not allowed" });
-  }
+    const authData = req.query;
+    const hash = authData.hash;
+    const BOT_TOKEN = process.env.BOT_TOKEN;
 
-  const user = req.body;
+    if (!hash || !BOT_TOKEN) {
+      return res.status(400).send("Missing data or token");
+    }
 
-  // ⏱️ auth_date freshness (Telegram recommended)
-  const now = Math.floor(Date.now() / 1000);
-  if (now - user.auth_date > 60 * 60) {
-    return res.status(401).json({ message: "Auth data expired" });
-  }
+    // 1. Data sort + string
+    const dataCheckArr = [];
+    Object.keys(authData)
+      .filter(key => key !== "hash")
+      .sort()
+      .forEach(key => dataCheckArr.push(`${key}=${authData[key]}`));
 
-  // 🔐 Create secret
-  const secret = crypto
-    .createHash("sha256")
-    .update(process.env.BOT_TOKEN)
-    .digest();
+    const dataCheckString = dataCheckArr.join("\n");
 
-  // 🧾 Build check string
-  const checkString = Object.keys(user)
-    .filter(k => k !== "hash")
-    .sort()
-    .map(k => `${k}=${user[k]}`)
-    .join("\n");
+    // 2. Hash verify
+    const secretKey = crypto
+      .createHash("sha256")
+      .update(BOT_TOKEN)
+      .digest();
 
-  // 🔑 HMAC
-  const hmac = crypto
-    .createHmac("sha256", secret)
-    .update(checkString)
-    .digest("hex");
+    const hmac = crypto
+      .createHmac("sha256", secretKey)
+      .update(dataCheckString)
+      .digest("hex");
 
-  if (hmac !== user.hash) {
-    return res.status(401).json({ message: "Invalid Telegram data" });
-  }
-
-  // 🎟️ JWT
-  const token = jwt.sign(
-    { telegramId: user.id, username: user.username },
-    process.env.JWT_SECRET,
-    { expiresIn: "7d" }
-  );
-
-  return res.status(200).json({
-    message: "Telegram login successful",
-    token,
-    user
+    if (hmac === hash) {
+      res.send(`
+        <h1>Login Successful!</h1>
+        <p>Hello, ${authData.first_name} (ID: ${authData.id})</p>
+        <script>
+          setTimeout(() => {
+            window.location.href = "/";
+          }, 3000);
+        </script>
+      `);
+    } else {
+      res.status(403).send("<h1>Verification Failed!</h1><p>Data is tampered.</p>");
+    }
   });
-}
+};
