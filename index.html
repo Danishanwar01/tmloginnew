@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Danny Bro ki Website</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f4f4f4; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>Welcome Danny Bro!</h2>
+        <p>Login karne ke liye niche button dabao:</p>
+        
+        <script async src="https://telegram.org/js/telegram-widget.js?22" 
+                data-telegram-login="africacryptologinbot" 
+                data-size="large" 
+                data-onauth="onTelegramAuth(user)" 
+                data-request-access="write"></script>
+    </div>
+
+    <script>
+        function onTelegramAuth(user) {
+            console.log("Data aaya:", user);
+
+            // Backend ko bhej rahe hain verify karne ke liye
+            fetch('/api/auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(user)
+            })
+            .then(res => res.json())
+            .then(resData => {
+                if(resData.success) {
+                    alert("Sahi hai bro! Login successful: " + user.first_name);
+                } else {
+                    alert("Login failed! " + resData.message);
+                }
+            })
+            .catch(err => console.error("Error:", err));
+        }
+    </script>
+</body>
+</html>
